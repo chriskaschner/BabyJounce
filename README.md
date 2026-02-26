@@ -38,6 +38,12 @@ Or use the wrapper script:
 python3 scripts/run_analysis.py --data-dir data
 ```
 
+Write a Markdown report plus SVG plots:
+
+```bash
+PYTHONPATH=src python3 -m babyjounce --data-dir data --output reports/summary.md
+```
+
 ### Run tests
 
 ```bash

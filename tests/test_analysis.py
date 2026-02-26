@@ -32,6 +32,19 @@ class AnalysisTests(unittest.TestCase):
         self.assertIn("## Research-Informed Comparison (Not Clinical Limits)", report)
         self.assertIn("## Simple Baselines", report)
 
+    def test_report_can_embed_plot_links(self) -> None:
+        report = generate_report(
+            self.data_dir,
+            plot_paths={
+                "speed_histogram": "plots/speed_histogram.svg",
+                "dynamic_accel_histogram": "plots/dynamic_accel_histogram.svg",
+                "route_paths": "plots/route_paths.svg",
+                "route_heatmap": "plots/route_heatmap.svg",
+            },
+        )
+        self.assertIn("## Plots", report)
+        self.assertIn("![Speed Histogram](plots/speed_histogram.svg)", report)
+
     def test_research_comparison_panel_values(self) -> None:
         result = analyze_data(self.data_dir)
         self.assertEqual(result.summaries["walking"].dynamic_band, "Moderate")

@@ -26,6 +26,8 @@ class Record:
     accel_x_g: float
     accel_y_g: float
     accel_z_g: float
+    latitude: float
+    longitude: float
     timestamp: datetime | None
     activity: str
 
@@ -123,6 +125,8 @@ def load_records(csv_path: Path, label: str) -> list[Record]:
                 accel_x = float(row["accelerometerAccelerationX(G)"])
                 accel_y = float(row["accelerometerAccelerationY(G)"])
                 accel_z = float(row["accelerometerAccelerationZ(G)"])
+                latitude = float(row["locationLatitude(WGS84)"])
+                longitude = float(row["locationLongitude(WGS84)"])
             except (KeyError, ValueError):
                 continue
 
@@ -133,6 +137,8 @@ def load_records(csv_path: Path, label: str) -> list[Record]:
                     accel_x_g=accel_x,
                     accel_y_g=accel_y,
                     accel_z_g=accel_z,
+                    latitude=latitude,
+                    longitude=longitude,
                     timestamp=parse_timestamp(row.get("loggingTime(txt)", "")),
                     activity=row.get("activity(txt)", ""),
                 )
@@ -278,7 +284,7 @@ def format_summary(name: str, summary: DatasetSummary) -> str:
     )
 
 
-def generate_report(data_dir: Path) -> str:
+def generate_report(data_dir: Path, plot_paths: dict[str, str] | None = None) -> str:
     result = analyze_data(data_dir)
     lines = [
         "# BabyJounce v2 Summary",
@@ -317,6 +323,22 @@ def generate_report(data_dir: Path) -> str:
             )
         )
     lines.append("")
+
+    if plot_paths:
+        plot_items = [
+            ("speed_histogram", "Speed Histogram"),
+            ("dynamic_accel_histogram", "Dynamic Acceleration Histogram"),
+            ("route_paths", "Route Paths"),
+            ("route_heatmap", "Route Density Heatmap"),
+        ]
+        lines.extend(["## Plots", ""])
+        for key, title in plot_items:
+            value = plot_paths.get(key)
+            if value:
+                lines.append(f"### {title}")
+                lines.append("")
+                lines.append(f"![{title}]({value})")
+                lines.append("")
 
     driving = result.driving_vs_non_driving_by_speed
     running = result.running_vs_walking_by_speed
