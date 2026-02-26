@@ -29,7 +29,16 @@ class AnalysisTests(unittest.TestCase):
         report = generate_report(self.data_dir)
         self.assertIn("# BabyJounce v2 Summary", report)
         self.assertIn("## Dataset Stats", report)
+        self.assertIn("## Research-Informed Comparison (Not Clinical Limits)", report)
         self.assertIn("## Simple Baselines", report)
+
+    def test_research_comparison_panel_values(self) -> None:
+        result = analyze_data(self.data_dir)
+        self.assertEqual(result.summaries["walking"].dynamic_band, "Moderate")
+        self.assertEqual(result.summaries["running"].dynamic_band, "Moderate")
+        self.assertEqual(result.summaries["driving"].dynamic_band, "Low")
+        self.assertGreater(result.summaries["running"].dynamic_accel_mps2.rms, 2.0)
+        self.assertLess(result.summaries["driving"].dynamic_accel_mps2.rms, 1.1)
 
 
 if __name__ == "__main__":

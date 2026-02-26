@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Iterable
 
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f %z"
+GRAVITY_MPS2 = 9.80665
+RESEARCH_BAND_LOW_RMS_MPS2 = 1.1
+RESEARCH_BAND_MODERATE_RMS_MPS2 = 2.7
 DATASET_FILES = {
     "walking": "walking.csv",
     "running": "running.csv",
@@ -30,6 +33,7 @@ class Record:
 @dataclass(frozen=True)
 class NumericSummary:
     mean: float
+    rms: float
     stddev: float
     minimum: float
     maximum: float
@@ -47,6 +51,11 @@ class DatasetSummary:
     accel_y: NumericSummary
     accel_norm: NumericSummary
     jerk_y_abs: NumericSummary
+    dynamic_accel_mps2: NumericSummary
+    dynamic_pct_ge_2_mps2: float
+    dynamic_pct_ge_3_mps2: float
+    dynamic_pct_ge_4_mps2: float
+    dynamic_band: str
     top_activities: list[tuple[str, int]]
 
 
@@ -83,16 +92,18 @@ def summarize_numeric(values: Iterable[float]) -> NumericSummary:
     vals = list(values)
     if not vals:
         nan = float("nan")
-        return NumericSummary(nan, nan, nan, nan, nan, nan, nan)
+        return NumericSummary(nan, nan, nan, nan, nan, nan, nan, nan)
 
     count = len(vals)
     mean = sum(vals) / count
+    rms = math.sqrt(sum(value**2 for value in vals) / count)
     variance = (
         sum((value - mean) ** 2 for value in vals) / (count - 1) if count > 1 else 0.0
     )
     sorted_vals = sorted(vals)
     return NumericSummary(
         mean=mean,
+        rms=rms,
         stddev=math.sqrt(variance),
         minimum=sorted_vals[0],
         maximum=sorted_vals[-1],
@@ -129,6 +140,20 @@ def load_records(csv_path: Path, label: str) -> list[Record]:
     return records
 
 
+def classify_dynamic_band(rms_dynamic_mps2: float) -> str:
+    if rms_dynamic_mps2 < RESEARCH_BAND_LOW_RMS_MPS2:
+        return "Low"
+    if rms_dynamic_mps2 <= RESEARCH_BAND_MODERATE_RMS_MPS2:
+        return "Moderate"
+    return "Elevated"
+
+
+def percentage_at_or_above(values: list[float], threshold: float) -> float:
+    if not values:
+        return 0.0
+    return (sum(1 for value in values if value >= threshold) / len(values)) * 100.0
+
+
 def summarize_records(label: str, records: list[Record]) -> DatasetSummary:
     timestamps = [record.timestamp for record in records if record.timestamp is not None]
     duration_minutes = 0.0
@@ -141,6 +166,7 @@ def summarize_records(label: str, records: list[Record]) -> DatasetSummary:
         math.sqrt(record.accel_x_g**2 + record.accel_y_g**2 + record.accel_z_g**2)
         for record in records
     ]
+    dynamic_accel_mps2 = [abs(norm - 1.0) * GRAVITY_MPS2 for norm in accel_norm]
 
     jerk_y_abs: list[float] = []
     prev_timestamp: datetime | None = None
@@ -155,6 +181,7 @@ def summarize_records(label: str, records: list[Record]) -> DatasetSummary:
         prev_accel_y = record.accel_y_g
 
     top_activities = Counter(record.activity for record in records).most_common(5)
+    dynamic_summary = summarize_numeric(dynamic_accel_mps2)
 
     return DatasetSummary(
         label=label,
@@ -164,6 +191,11 @@ def summarize_records(label: str, records: list[Record]) -> DatasetSummary:
         accel_y=summarize_numeric(accel_y),
         accel_norm=summarize_numeric(accel_norm),
         jerk_y_abs=summarize_numeric(jerk_y_abs),
+        dynamic_accel_mps2=dynamic_summary,
+        dynamic_pct_ge_2_mps2=percentage_at_or_above(dynamic_accel_mps2, 2.0),
+        dynamic_pct_ge_3_mps2=percentage_at_or_above(dynamic_accel_mps2, 3.0),
+        dynamic_pct_ge_4_mps2=percentage_at_or_above(dynamic_accel_mps2, 4.0),
+        dynamic_band=classify_dynamic_band(dynamic_summary.rms),
         top_activities=top_activities,
     )
 
@@ -257,6 +289,34 @@ def generate_report(data_dir: Path) -> str:
     for label in ("walking", "running", "driving"):
         lines.append(format_summary(label, result.summaries[label]))
         lines.append("")
+
+    lines.extend(
+        [
+            "## Research-Informed Comparison (Not Clinical Limits)",
+            "",
+            (
+                "Bands by dynamic-acceleration RMS (m/s^2): "
+                "Low < 1.1, Moderate 1.1-2.7, Elevated > 2.7"
+            ),
+            "Dynamic acceleration is calculated as abs(||a|| - 1g) converted to m/s^2.",
+            "",
+        ]
+    )
+    for label in ("walking", "running", "driving"):
+        summary = result.summaries[label]
+        lines.append(
+            (
+                f"- {label}: band={summary.dynamic_band}, "
+                f"dyn_rms={summary.dynamic_accel_mps2.rms:.3f}, "
+                f"q95={summary.dynamic_accel_mps2.q95:.3f}, "
+                f"q99={summary.dynamic_accel_mps2.q99:.3f}, "
+                f"peak={summary.dynamic_accel_mps2.maximum:.3f}, "
+                f">=2/3/4mps2={summary.dynamic_pct_ge_2_mps2:.2f}%/"
+                f"{summary.dynamic_pct_ge_3_mps2:.2f}%/"
+                f"{summary.dynamic_pct_ge_4_mps2:.2f}%"
+            )
+        )
+    lines.append("")
 
     driving = result.driving_vs_non_driving_by_speed
     running = result.running_vs_walking_by_speed

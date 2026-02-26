@@ -24,6 +24,7 @@ See `ARCHIVE.md` for archive notes and guardrails.
 ## 2) Updated Version (v2, Reproducible)
 
 The v2 path is a small, testable Python package (stdlib only).
+The generated report includes a research-informed comparison panel (dynamic acceleration RMS bands and exceedance rates) for walking vs running vs driving.
 
 ### Run the analysis
 
